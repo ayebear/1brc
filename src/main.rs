@@ -1,7 +1,7 @@
 use anyhow::Result;
+use hashbrown::HashMap;
 use memmap2::Mmap;
 use std::{
-    collections::BTreeMap,
     env,
     fs::File,
     sync::RwLock,
@@ -119,7 +119,7 @@ impl Station {
 
 #[derive(Default, Debug)]
 struct Stations {
-    map: BTreeMap<String, Station>,
+    map: HashMap<String, Station>,
 }
 
 impl Stations {
