@@ -4,7 +4,7 @@ use std::{
     collections::BTreeMap,
     env,
     fs::File,
-    sync::RwLock,
+    sync::{Arc, RwLock},
     thread::{self, available_parallelism},
 };
 
@@ -19,17 +19,18 @@ fn main() -> Result<()> {
     let threads: usize = available_parallelism()?.into();
     eprintln!("File {filename} is {len} bytes. Using {threads} thread(s).");
     // println!("Header: {:?}", std::str::from_utf8(&mmap[0..800])?);
-    // let stations = RwLock::new(Stations::default());
+    let stations = Arc::new(RwLock::new(Stations::default()));
     thread::scope(|s| {
         let chunks = get_chunks(&mmap, len, threads);
         for (start, end) in chunks {
             eprintln!("Thread: start={start}, end={end}");
-            let buf = &mmap;
-            s.spawn(move || {
-                process_chunk(buf, start, end);
+            let chunk = &mmap[start..end];
+            s.spawn(|| {
+                process_chunk(chunk, stations.clone());
             });
         }
     });
+    stations.read().unwrap().print();
     Ok(())
 }
 
@@ -53,29 +54,34 @@ fn get_chunks(mmap: &[u8], len: usize, threads: usize) -> Vec<Chunk> {
     v
 }
 
-fn process_chunk(mmap: &[u8], start: usize, end: usize) {
+fn process_chunk(chunk: &[u8], stations: Arc<RwLock<Stations>>) {
+    let end = chunk.len();
     // let mut stations = Stations::default();
-    let mut i = start;
+    let mut i = 0;
     while i < end {
         // Read station name
-        // let mut name = String::new();
-        while i < end && mmap[i] != b';' {
-            // name.push(mmap[i] as char);
+        let mut name = String::new();
+        while i < end && chunk[i] != b';' {
+            name.push(chunk[i] as char);
             i += 1;
         }
         i += 1;
         // Read float value
-        // let mut value = String::new();
-        while i < end && mmap[i] != b'\n' {
-            // value.push(mmap[i] as char);
+        let mut value = String::new();
+        while i < end && chunk[i] != b'\n' {
+            value.push(chunk[i] as char);
             i += 1;
         }
         i += 1;
-        // Insert data
-        // stations.try_write().unwrap().insert(name, value.parse()?);
-        // stations.insert(name, value.parse()?);
+        let value: f64 = value.parse().unwrap();
+        // Try to get station to modify if it exists, otherwise add it
+        if let Some(station) = stations.read().unwrap().get_station(&name) {
+            station.write().unwrap().add(Station::new(value));
+            continue;
+        }
+        stations.write().unwrap().insert(name.clone(), value);
     }
-    eprintln!("thread {start}..{end} ended at i: {i}");
+    eprintln!("thread 0..{end} ended at i: {i}");
     // stations.try_read().unwrap().print();
     // stations.print();
 }
@@ -114,18 +120,23 @@ impl Station {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Debug)]
 struct Stations {
-    map: BTreeMap<String, Station>,
+    map: BTreeMap<String, Arc<RwLock<Station>>>,
 }
 
 impl Stations {
+    fn get_station(&self, name: &str) -> Option<Arc<RwLock<Station>>> {
+        self.map.get(name).cloned()
+    }
+
     fn insert(&mut self, name: String, value: f64) {
         let station = Station::new(value);
-        self.map
-            .entry(name)
-            .and_modify(|e| e.add(station))
-            .or_insert(station);
+        self.map.insert(name, Arc::new(RwLock::new(station)));
+        // self.map
+        //     .entry(name)
+        //     .and_modify(|e| e.add(station))
+        //     .or_insert(station);
     }
 
     fn print(&self) {
@@ -133,6 +144,7 @@ impl Stations {
             .map
             .iter()
             .map(|(name, station)| {
+                let station = station.read().unwrap();
                 format!(
                     "{name}={:.1}/{:.1}/{:.1}",
                     station.min,
