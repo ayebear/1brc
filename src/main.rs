@@ -4,6 +4,7 @@ use memmap2::Mmap;
 use std::{
     env,
     fs::File,
+    str::from_utf8_unchecked,
     sync::RwLock,
     thread::{self, available_parallelism},
 };
@@ -23,7 +24,7 @@ fn main() -> Result<()> {
     thread::scope(|s| {
         let chunks = get_chunks(&mmap, len, threads);
         for (start, end) in chunks {
-            eprintln!("START {start}..{end}");
+            // eprintln!("START {start}..{end}");
             let chunk = &mmap[start..end];
             s.spawn(|| {
                 // Process stations locally and then merge to global results
@@ -63,11 +64,11 @@ fn process_chunk(chunk: &[u8]) -> Stations {
     let mut i = 0;
     while i < end {
         // Read station name
-        let mut name = String::new();
+        let name_start = i;
         while i < end && chunk[i] != b';' {
-            name.push(chunk[i] as char);
             i += 1;
         }
+        let name_end = i;
         i += 1;
         // Read float value
         let mut value = String::new();
@@ -78,9 +79,10 @@ fn process_chunk(chunk: &[u8]) -> Stations {
         i += 1;
         let value: f64 = value.parse().unwrap();
         // Try to get station to modify if it exists, otherwise add it
-        stations.insert(&name, value);
+        let name = unsafe { from_utf8_unchecked(&chunk[name_start..=name_end]) };
+        stations.insert(name, value);
     }
-    eprintln!("END 0..{end} at i: {i}");
+    // eprintln!("END 0..{end} at i: {i}");
     stations
 }
 
