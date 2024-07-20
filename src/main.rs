@@ -71,15 +71,17 @@ fn process_chunk(chunk: &[u8]) -> Stations {
         let name_end = i;
         i += 1;
         // Read float value
-        let mut value = String::new();
+        let value_start = i;
         while i < end && chunk[i] != b'\n' {
-            value.push(chunk[i] as char);
             i += 1;
         }
+        let value_end = i;
         i += 1;
-        let value: f64 = value.parse().unwrap();
+        // Convert to strs and parse
+        let value_str = unsafe { from_utf8_unchecked(&chunk[value_start..value_end]) };
+        let value: f64 = value_str.parse().unwrap();
+        let name = unsafe { from_utf8_unchecked(&chunk[name_start..name_end]) };
         // Try to get station to modify if it exists, otherwise add it
-        let name = unsafe { from_utf8_unchecked(&chunk[name_start..=name_end]) };
         stations.insert(name, value);
     }
     // eprintln!("END 0..{end} at i: {i}");
