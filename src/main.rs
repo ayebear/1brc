@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     thread::scope(|s| {
         let chunks = get_chunks(&mmap, len, threads);
         for (start, end) in chunks {
-            eprintln!("Thread: start={start}, end={end}");
+            eprintln!("START {start}..{end}");
             let chunk = &mmap[start..end];
             s.spawn(|| {
                 process_chunk(chunk, stations.clone());
@@ -76,23 +76,13 @@ fn process_chunk(chunk: &[u8], stations: Arc<RwLock<Stations>>) {
         let value: f64 = value.parse().unwrap();
         // Try to get station to modify if it exists, otherwise add it
         if let Some(station) = stations.read().unwrap().get_station(&name) {
-            station.write().unwrap().add(Station::new(value));
+            station.write().unwrap().add(value);
             continue;
         }
-        stations.write().unwrap().insert(name.clone(), value);
+        stations.write().unwrap().insert(name, value);
     }
-    eprintln!("thread 0..{end} ended at i: {i}");
-    // stations.try_read().unwrap().print();
-    // stations.print();
+    eprintln!("END 0..{end} at i: {i}");
 }
-
-// type Line = (String, f64);
-// fn parse_line(line: &str) -> Option<Line> {
-//     let mut parts = line.split(';');
-//     let name = parts.next()?.to_string();
-//     let value = parts.next()?.parse().ok()?;
-//     Some((name, value))
-// }
 
 #[derive(Default, Clone, Copy, Debug)]
 struct Station {
@@ -112,11 +102,11 @@ impl Station {
         }
     }
 
-    fn add(&mut self, other: Self) {
-        self.min = self.min.min(other.min);
-        self.max = self.max.max(other.max);
-        self.total += other.total;
-        self.count += other.count;
+    fn add(&mut self, value: f64) {
+        self.min = self.min.min(value);
+        self.max = self.max.max(value);
+        self.total += value;
+        self.count += 1;
     }
 }
 
@@ -133,10 +123,6 @@ impl Stations {
     fn insert(&mut self, name: String, value: f64) {
         let station = Station::new(value);
         self.map.insert(name, Arc::new(RwLock::new(station)));
-        // self.map
-        //     .entry(name)
-        //     .and_modify(|e| e.add(station))
-        //     .or_insert(station);
     }
 
     fn print(&self) {
