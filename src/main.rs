@@ -19,12 +19,11 @@ fn main() -> Result<()> {
     let len = mmap.len();
     let threads: usize = available_parallelism()?.into();
     eprintln!("File {filename} is {len} bytes. Using {threads} thread(s).");
-    // println!("Header: {:?}", std::str::from_utf8(&mmap[0..800])?);
+    // Spawn a thread for each chunk of input
     let results = RwLock::new(Stations::default());
     thread::scope(|s| {
         let chunks = get_chunks(&mmap, len, threads);
         for (start, end) in chunks {
-            // eprintln!("START {start}..{end}");
             let chunk = &mmap[start..end];
             s.spawn(|| {
                 // Process stations locally and then merge to global results
@@ -59,33 +58,35 @@ fn get_chunks(mmap: &[u8], len: usize, threads: usize) -> Vec<Chunk> {
 
 fn process_chunk(chunk: &[u8]) -> Stations {
     let mut stations = Stations::default();
-    let end = chunk.len();
-    // let mut stations = Stations::default();
+    let len = chunk.len();
     let mut i = 0;
-    while i < end {
+    while i < len {
         // Read station name
-        let name_start = i;
-        while i < end && chunk[i] != b';' {
-            i += 1;
-        }
-        let name_end = i;
-        i += 1;
-        // Read float value
-        let value_start = i;
-        while i < end && chunk[i] != b'\n' {
-            i += 1;
-        }
-        let value_end = i;
-        i += 1;
-        // Convert to strs and parse
-        let value_str = unsafe { from_utf8_unchecked(&chunk[value_start..value_end]) };
-        let value: f64 = value_str.parse().unwrap();
-        let name = unsafe { from_utf8_unchecked(&chunk[name_start..name_end]) };
-        // Try to get station to modify if it exists, otherwise add it
+        let name = eat(chunk, i, b';');
+        i += name.len() + 1;
+        let name = unsafe { from_utf8_unchecked(name) };
+        // Parse float value
+        let value = eat(chunk, i, b'\n');
+        i += value.len() + 1;
+        let value = parse_float(value);
+        // Record results locally
         stations.insert(name, value);
     }
-    // eprintln!("END 0..{end} at i: {i}");
     stations
+}
+
+fn eat(chunk: &[u8], start: usize, target: u8) -> &[u8] {
+    let mut i = start;
+    let len = chunk.len();
+    while i < len && chunk[i] != target {
+        i += 1;
+    }
+    &chunk[start..i]
+}
+
+fn parse_float(chunk: &[u8]) -> f64 {
+    let str = unsafe { from_utf8_unchecked(chunk) };
+    str.parse().unwrap()
 }
 
 #[derive(Default, Clone, Copy, Debug)]
