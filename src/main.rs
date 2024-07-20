@@ -1,10 +1,14 @@
 use anyhow::Result;
+use atomic_float::AtomicF64;
 use memmap2::Mmap;
 use std::{
     collections::BTreeMap,
     env,
     fs::File,
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering::Relaxed},
+        Arc, RwLock,
+    },
     thread::{self, available_parallelism},
 };
 
@@ -76,7 +80,7 @@ fn process_chunk(chunk: &[u8], stations: Arc<RwLock<Stations>>) {
         let value: f64 = value.parse().unwrap();
         // Try to get station to modify if it exists, otherwise add it
         if let Some(station) = stations.read().unwrap().get_station(&name) {
-            station.write().unwrap().add(value);
+            station.add(value);
             continue;
         }
         stations.write().unwrap().insert(name, value);
@@ -84,45 +88,45 @@ fn process_chunk(chunk: &[u8], stations: Arc<RwLock<Stations>>) {
     eprintln!("END 0..{end} at i: {i}");
 }
 
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Debug)]
 struct Station {
-    min: f64,
-    max: f64,
-    total: f64,
-    count: usize,
+    min: AtomicF64,
+    max: AtomicF64,
+    total: AtomicF64,
+    count: AtomicUsize,
 }
 
 impl Station {
     fn new(value: f64) -> Self {
         Self {
-            min: value,
-            max: value,
-            total: value,
-            count: 1,
+            min: value.into(),
+            max: value.into(),
+            total: value.into(),
+            count: 1.into(),
         }
     }
 
-    fn add(&mut self, value: f64) {
-        self.min = self.min.min(value);
-        self.max = self.max.max(value);
-        self.total += value;
-        self.count += 1;
+    fn add(&self, value: f64) {
+        self.min.fetch_min(value, Relaxed);
+        self.max.fetch_max(value, Relaxed);
+        self.total.fetch_add(value, Relaxed);
+        self.count.fetch_add(1, Relaxed);
     }
 }
 
 #[derive(Default, Debug)]
 struct Stations {
-    map: BTreeMap<String, Arc<RwLock<Station>>>,
+    map: BTreeMap<String, Arc<Station>>,
 }
 
 impl Stations {
-    fn get_station(&self, name: &str) -> Option<Arc<RwLock<Station>>> {
+    fn get_station(&self, name: &str) -> Option<Arc<Station>> {
         self.map.get(name).cloned()
     }
 
     fn insert(&mut self, name: String, value: f64) {
         let station = Station::new(value);
-        self.map.insert(name, Arc::new(RwLock::new(station)));
+        self.map.insert(name, Arc::new(station));
     }
 
     fn print(&self) {
@@ -130,13 +134,11 @@ impl Stations {
             .map
             .iter()
             .map(|(name, station)| {
-                let station = station.read().unwrap();
-                format!(
-                    "{name}={:.1}/{:.1}/{:.1}",
-                    station.min,
-                    station.total / station.count as f64,
-                    station.max
-                )
+                let min = station.min.load(Relaxed);
+                let max = station.max.load(Relaxed);
+                let total = station.total.load(Relaxed);
+                let count = station.count.load(Relaxed);
+                format!("{name}={:.1}/{:.1}/{:.1}", min, total / count as f64, max)
             })
             .collect::<Vec<_>>()
             .join(", ");

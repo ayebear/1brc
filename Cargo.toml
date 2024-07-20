@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+atomic_float = "1.0.0"
 memmap2 = "0.9.4"
 rayon = "1.10"
