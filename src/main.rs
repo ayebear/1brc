@@ -78,7 +78,7 @@ fn process_chunk(chunk: &[u8]) -> Stations {
         i += 1;
         let value: f64 = value.parse().unwrap();
         // Try to get station to modify if it exists, otherwise add it
-        stations.insert(name, value);
+        stations.insert(&name, value);
     }
     eprintln!("END 0..{end} at i: {i}");
     stations
@@ -123,9 +123,9 @@ struct Stations {
 }
 
 impl Stations {
-    fn insert(&mut self, name: String, value: f64) {
+    fn insert(&mut self, name: &str, value: f64) {
         self.map
-            .entry(name)
+            .entry_ref(name)
             .and_modify(|e| e.add_value(value))
             .or_insert(Station::new(value));
     }
