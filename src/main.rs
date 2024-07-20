@@ -1,14 +1,10 @@
 use anyhow::Result;
-use atomic_float::AtomicF64;
 use memmap2::Mmap;
 use std::{
     collections::BTreeMap,
     env,
     fs::File,
-    sync::{
-        atomic::{AtomicUsize, Ordering::Relaxed},
-        Arc, RwLock,
-    },
+    sync::RwLock,
     thread::{self, available_parallelism},
 };
 
@@ -23,18 +19,20 @@ fn main() -> Result<()> {
     let threads: usize = available_parallelism()?.into();
     eprintln!("File {filename} is {len} bytes. Using {threads} thread(s).");
     // println!("Header: {:?}", std::str::from_utf8(&mmap[0..800])?);
-    let stations = Arc::new(RwLock::new(Stations::default()));
+    let results = RwLock::new(Stations::default());
     thread::scope(|s| {
         let chunks = get_chunks(&mmap, len, threads);
         for (start, end) in chunks {
             eprintln!("START {start}..{end}");
             let chunk = &mmap[start..end];
             s.spawn(|| {
-                process_chunk(chunk, stations.clone());
+                // Process stations locally and then merge to global results
+                let stations = process_chunk(chunk);
+                results.write().unwrap().merge(stations);
             });
         }
     });
-    stations.read().unwrap().print();
+    results.read().unwrap().print();
     Ok(())
 }
 
@@ -58,7 +56,8 @@ fn get_chunks(mmap: &[u8], len: usize, threads: usize) -> Vec<Chunk> {
     v
 }
 
-fn process_chunk(chunk: &[u8], stations: Arc<RwLock<Stations>>) {
+fn process_chunk(chunk: &[u8]) -> Stations {
+    let mut stations = Stations::default();
     let end = chunk.len();
     // let mut stations = Stations::default();
     let mut i = 0;
@@ -79,54 +78,65 @@ fn process_chunk(chunk: &[u8], stations: Arc<RwLock<Stations>>) {
         i += 1;
         let value: f64 = value.parse().unwrap();
         // Try to get station to modify if it exists, otherwise add it
-        if let Some(station) = stations.read().unwrap().get_station(&name) {
-            station.add(value);
-            continue;
-        }
-        stations.write().unwrap().insert(name, value);
+        stations.insert(name, value);
     }
     eprintln!("END 0..{end} at i: {i}");
+    stations
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Copy, Debug)]
 struct Station {
-    min: AtomicF64,
-    max: AtomicF64,
-    total: AtomicF64,
-    count: AtomicUsize,
+    min: f64,
+    max: f64,
+    total: f64,
+    count: usize,
 }
 
 impl Station {
     fn new(value: f64) -> Self {
         Self {
-            min: value.into(),
-            max: value.into(),
-            total: value.into(),
-            count: 1.into(),
+            min: value,
+            max: value,
+            total: value,
+            count: 1,
         }
     }
 
-    fn add(&self, value: f64) {
-        self.min.fetch_min(value, Relaxed);
-        self.max.fetch_max(value, Relaxed);
-        self.total.fetch_add(value, Relaxed);
-        self.count.fetch_add(1, Relaxed);
+    fn add_value(&mut self, value: f64) {
+        self.min = self.min.min(value);
+        self.max = self.max.max(value);
+        self.total += value;
+        self.count += 1;
+    }
+
+    fn add_station(&mut self, other: Self) {
+        self.min = self.min.min(other.min);
+        self.max = self.max.max(other.max);
+        self.total += other.total;
+        self.count += other.count;
     }
 }
 
 #[derive(Default, Debug)]
 struct Stations {
-    map: BTreeMap<String, Arc<Station>>,
+    map: BTreeMap<String, Station>,
 }
 
 impl Stations {
-    fn get_station(&self, name: &str) -> Option<Arc<Station>> {
-        self.map.get(name).cloned()
+    fn insert(&mut self, name: String, value: f64) {
+        self.map
+            .entry(name)
+            .and_modify(|e| e.add_value(value))
+            .or_insert(Station::new(value));
     }
 
-    fn insert(&mut self, name: String, value: f64) {
-        let station = Station::new(value);
-        self.map.insert(name, Arc::new(station));
+    fn merge(&mut self, other: Self) {
+        for (name, station) in other.map {
+            self.map
+                .entry(name)
+                .and_modify(|e| e.add_station(station))
+                .or_insert(station);
+        }
     }
 
     fn print(&self) {
@@ -134,10 +144,12 @@ impl Stations {
             .map
             .iter()
             .map(|(name, station)| {
-                let min = station.min.load(Relaxed);
-                let max = station.max.load(Relaxed);
-                let total = station.total.load(Relaxed);
-                let count = station.count.load(Relaxed);
+                let &Station {
+                    min,
+                    max,
+                    total,
+                    count,
+                } = station;
                 format!("{name}={:.1}/{:.1}/{:.1}", min, total / count as f64, max)
             })
             .collect::<Vec<_>>()
