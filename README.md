@@ -1,6 +1,8 @@
 # 1brc
 
-Simple solution to [1brc](https://www.morling.dev/blog/one-billion-row-challenge/) in rust with rayon.
+Fast solution to [1brc](https://www.morling.dev/blog/one-billion-row-challenge/) in rust.
+
+Also see an [even simpler (but slower) solution using a parallel iterator chain with rayon](https://github.com/ayebear/1brc-rayon).
 
 ## To run
 
