@@ -84,9 +84,22 @@ fn eat(chunk: &[u8], start: usize, target: u8) -> &[u8] {
     &chunk[start..i]
 }
 
+/// Faster method for parsing floats with only 1 digit of precision
 fn parse_float(chunk: &[u8]) -> f64 {
-    let str = unsafe { from_utf8_unchecked(chunk) };
-    str.parse().unwrap()
+    let mut dec: i32 = 0;
+    let mut base: i32 = 1;
+    let mut dot: f64 = 1.;
+    for &c in chunk.iter().rev() {
+        if c == b'.' {
+            dot = 0.1;
+        } else if c.is_ascii_digit() {
+            let digit = (c - b'0') as i32;
+            dec += digit * base;
+            base *= 10;
+        }
+    }
+    let sign = (chunk[0] != b'-') as i32 * 2 - 1;
+    (sign * dec) as f64 * dot
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -160,5 +173,26 @@ impl Stations {
             .collect::<Vec<_>>()
             .join(", ");
         println!("{{{results}}}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn close(a: f64, b: f64) -> bool {
+        eprintln!("{a} vs {b}");
+        (a - b).abs() < f64::EPSILON
+    }
+
+    #[test]
+    fn parses() {
+        assert!(close(parse_float(b"15"), 15.0));
+        assert!(close(parse_float(b"-15"), -15.0));
+        assert!(close(parse_float(b"15.3"), 15.3));
+        assert!(close(parse_float(b"-15.3"), -15.3));
+        assert!(close(parse_float(b"0.3"), 0.3));
+        assert!(close(parse_float(b"-0.3"), -0.3));
+        assert!(close(parse_float(b"1234567.8"), 1234567.8));
     }
 }
