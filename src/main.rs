@@ -1,5 +1,5 @@
 use anyhow::Result;
-use memmap::MmapOptions;
+use memmap2::Mmap;
 use std::{
     collections::BTreeMap,
     env,
@@ -14,7 +14,7 @@ fn main() -> Result<()> {
         .nth(1)
         .unwrap_or_else(|| "measurements.txt".to_string());
     let file = File::open(&filename)?;
-    let mmap = unsafe { MmapOptions::new().map(&file)? };
+    let mmap = unsafe { Mmap::map(&file)? };
     let len = mmap.len();
     let threads: usize = available_parallelism()?.into();
     eprintln!("File {filename} is {len} bytes. Using {threads} thread(s).");
