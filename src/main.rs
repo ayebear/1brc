@@ -68,7 +68,7 @@ fn process_chunk(chunk: &[u8]) -> Stations {
         // Parse float value
         let value = eat(chunk, i, b'\n');
         i += value.len() + 1;
-        let value = parse_float(value);
+        let value = parse_int(value);
         // Record results locally
         stations.insert(name, value);
     }
@@ -85,13 +85,13 @@ fn eat(chunk: &[u8], start: usize, target: u8) -> &[u8] {
 }
 
 /// Faster method for parsing floats with only 1 digit of precision
-fn parse_float(chunk: &[u8]) -> f64 {
+fn parse_int(chunk: &[u8]) -> i32 {
     let mut dec: i32 = 0;
     let mut base: i32 = 1;
-    let mut dot: f64 = 1.;
+    let mut dot: i32 = 10;
     for &c in chunk.iter().rev() {
         if c == b'.' {
-            dot = 0.1;
+            dot = 1;
         } else if c.is_ascii_digit() {
             let digit = (c - b'0') as i32;
             dec += digit * base;
@@ -99,19 +99,19 @@ fn parse_float(chunk: &[u8]) -> f64 {
         }
     }
     let sign = (chunk[0] != b'-') as i32 * 2 - 1;
-    (sign * dec) as f64 * dot
+    sign * dec * dot
 }
 
 #[derive(Default, Clone, Copy, Debug)]
 struct Station {
-    min: f64,
-    max: f64,
-    total: f64,
+    min: i32,
+    max: i32,
+    total: i32,
     count: usize,
 }
 
 impl Station {
-    fn new(value: f64) -> Self {
+    fn new(value: i32) -> Self {
         Self {
             min: value,
             max: value,
@@ -120,7 +120,7 @@ impl Station {
         }
     }
 
-    fn add_value(&mut self, value: f64) {
+    fn add_value(&mut self, value: i32) {
         self.min = self.min.min(value);
         self.max = self.max.max(value);
         self.total += value;
@@ -141,7 +141,7 @@ struct Stations {
 }
 
 impl Stations {
-    fn insert(&mut self, name: &str, value: f64) {
+    fn insert(&mut self, name: &str, value: i32) {
         self.map
             .entry_ref(name)
             .and_modify(|e| e.add_value(value))
@@ -158,21 +158,17 @@ impl Stations {
     }
 
     fn print(&self) {
-        let results = self
-            .map
-            .iter()
-            .map(|(name, station)| {
-                let &Station {
-                    min,
-                    max,
-                    total,
-                    count,
-                } = station;
-                format!("{name}={:.1}/{:.1}/{:.1}", min, total / count as f64, max)
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        println!("{{{results}}}");
+        print!("{{");
+        for (i, (name, station)) in self.map.iter().enumerate() {
+            if i != 0 {
+                print!(", ");
+            }
+            let mean = (station.total as f64 * 0.1) / (station.count as f64 * 0.1);
+            let min = station.min as f64 * 0.1;
+            let max = station.max as f64 * 0.1;
+            print!("{name}={min:.1}/{mean:.1}/{max:.1}");
+        }
+        println!("}}");
     }
 }
 
@@ -180,19 +176,17 @@ impl Stations {
 mod tests {
     use super::*;
 
-    fn close(a: f64, b: f64) -> bool {
-        eprintln!("{a} vs {b}");
-        (a - b).abs() < f64::EPSILON
-    }
-
     #[test]
     fn parses() {
-        assert!(close(parse_float(b"15"), 15.0));
-        assert!(close(parse_float(b"-15"), -15.0));
-        assert!(close(parse_float(b"15.3"), 15.3));
-        assert!(close(parse_float(b"-15.3"), -15.3));
-        assert!(close(parse_float(b"0.3"), 0.3));
-        assert!(close(parse_float(b"-0.3"), -0.3));
-        assert!(close(parse_float(b"1234567.8"), 1234567.8));
+        assert_eq!(parse_int(b"99.9"), 999);
+        assert_eq!(parse_int(b"-99.9"), -999);
+        assert_eq!(parse_int(b"0"), 0);
+        assert_eq!(parse_int(b"15"), 150);
+        assert_eq!(parse_int(b"-15"), -150);
+        assert_eq!(parse_int(b"15.3"), 153);
+        assert_eq!(parse_int(b"-15.3"), -153);
+        assert_eq!(parse_int(b"0.3"), 3);
+        assert_eq!(parse_int(b"-0.3"), -3);
+        assert_eq!(parse_int(b"1234567.8"), 12345678);
     }
 }
