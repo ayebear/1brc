@@ -166,7 +166,10 @@ impl Stations {
 
     fn print(&self) {
         print!("{{");
-        for (i, (name, station)) in self.map.iter().enumerate() {
+        // Sort results before printing
+        let mut sorted: Vec<_> = self.map.iter().collect();
+        sorted.sort_unstable_by_key(|(name, _)| name.as_str());
+        for (i, (name, station)) in sorted.iter().enumerate() {
             if i != 0 {
                 print!(", ");
             }
