@@ -1,6 +1,8 @@
 use anyhow::Result;
 use hashbrown::HashMap;
 use memmap2::Mmap;
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
+use std::arch::x86_64::*;
 use std::{
     env,
     fs::File,
@@ -75,9 +77,24 @@ fn process_chunk(chunk: &[u8]) -> Stations {
     stations
 }
 
+/// Returns the first part of the chunk up until, but not including, target
+/// character. Uses 128-bit sse2 instructions on supported platforms for a
+/// speedup. Could add further special instructions here for avx and others.
+#[inline(always)]
 fn eat(chunk: &[u8], start: usize, target: u8) -> &[u8] {
-    let mut i = start;
     let len = chunk.len();
+    let mut i = start;
+    // Process 16 bytes at a time on sse2 platforms
+    #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
+    while i + 16 <= len {
+        let v = unsafe { _mm_loadu_si128(chunk.as_ptr().add(i) as *const __m128i) };
+        let mask = unsafe { _mm_movemask_epi8(_mm_cmpeq_epi8(v, _mm_set1_epi8(target as i8))) };
+        if mask != 0 {
+            return &chunk[start..i + mask.trailing_zeros() as usize];
+        }
+        i += 16;
+    }
+    // Handle remaining bytes
     while i < len && chunk[i] != target {
         i += 1;
     }
@@ -167,6 +184,7 @@ impl Stations {
     fn print(&self) {
         print!("{{");
         // Sort results before printing
+        // Future improvement could be to use BTreeMap for final results, to avoid this
         let mut sorted: Vec<_> = self.map.iter().collect();
         sorted.sort_unstable_by_key(|(name, _)| name.as_str());
         for (i, (name, station)) in sorted.iter().enumerate() {
@@ -200,5 +218,14 @@ mod tests {
         assert_eq!(parse_int(b"0.3"), 3);
         assert_eq!(parse_int(b"-0.3"), -3);
         assert_eq!(parse_int(b"-1.3"), -13);
+    }
+
+    #[test]
+    fn eats() {
+        assert_eq!(eat(b"5;", 0, b';'), b"5");
+        assert_eq!(
+            eat(b"foo_1234567890_bar_1234567890_baz_1234567890;out", 0, b';'),
+            b"foo_1234567890_bar_1234567890_baz_1234567890"
+        );
     }
 }
