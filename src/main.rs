@@ -84,22 +84,29 @@ fn eat(chunk: &[u8], start: usize, target: u8) -> &[u8] {
     &chunk[start..i]
 }
 
-/// Faster method for parsing floats with only 1 digit of precision
+// Converts a u8 character into an i32
+macro_rules! ctoi {
+    ($v:expr) => {
+        ($v - b'0') as i32
+    };
+}
+
+/// Parse a float into an int (*10) with the format "-99.9" (-xy.z). Returns 0
+/// for unhandled formats.
 fn parse_int(chunk: &[u8]) -> i32 {
-    let mut dec: i32 = 0;
-    let mut base: i32 = 1;
-    let mut dot: i32 = 10;
-    for &c in chunk.iter().rev() {
-        if c == b'.' {
-            dot = 1;
-        } else if c.is_ascii_digit() {
-            let digit = (c - b'0') as i32;
-            dec += digit * base;
-            base *= 10;
-        }
+    match chunk {
+        // Parse negatives
+        [b'-', x, y, b'.', z] => -(ctoi!(x) * 100 + ctoi!(y) * 10 + ctoi!(z)),
+        [b'-', y, b'.', z] => -(ctoi!(y) * 10 + ctoi!(z)),
+        [b'-', x, y] => -(ctoi!(x) * 100 + ctoi!(y) * 10),
+        [b'-', y] => -(ctoi!(y) * 10),
+        // Parse positives
+        [x, y, b'.', z] => ctoi!(x) * 100 + ctoi!(y) * 10 + ctoi!(z),
+        [y, b'.', z] => ctoi!(y) * 10 + ctoi!(z),
+        [x, y] => ctoi!(x) * 100 + ctoi!(y) * 10,
+        [y] => ctoi!(y) * 10,
+        _ => 0,
     }
-    let sign = (chunk[0] != b'-') as i32 * 2 - 1;
-    sign * dec * dot
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -181,12 +188,14 @@ mod tests {
         assert_eq!(parse_int(b"99.9"), 999);
         assert_eq!(parse_int(b"-99.9"), -999);
         assert_eq!(parse_int(b"0"), 0);
+        assert_eq!(parse_int(b"9"), 90);
+        assert_eq!(parse_int(b"-9"), -90);
         assert_eq!(parse_int(b"15"), 150);
         assert_eq!(parse_int(b"-15"), -150);
         assert_eq!(parse_int(b"15.3"), 153);
         assert_eq!(parse_int(b"-15.3"), -153);
         assert_eq!(parse_int(b"0.3"), 3);
         assert_eq!(parse_int(b"-0.3"), -3);
-        assert_eq!(parse_int(b"1234567.8"), 12345678);
+        assert_eq!(parse_int(b"-1.3"), -13);
     }
 }
