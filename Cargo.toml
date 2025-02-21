@@ -9,6 +9,7 @@ edition = "2024"
 anyhow = "1.0"
 hashbrown = "0.15"
 memmap2 = "0.9"
+rayon = "1.5"
 
 [profile.release]
 opt-level = 3
