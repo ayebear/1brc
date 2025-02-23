@@ -1,8 +1,8 @@
-use crate::cities::CITIES;
+use crate::{cities::CITIES, station::Pair};
 use anyhow::Result;
 use hashbrown::HashMap;
 use memmap2::Mmap;
-use std::{fs::File, io::Write, str::from_utf8_unchecked};
+use std::{fs::File, io::Write, slice::from_raw_parts, str::from_utf8_unchecked};
 
 pub fn preprocess_txt(filename: &str) -> Result<()> {
     // City map
@@ -23,12 +23,8 @@ pub fn preprocess_txt(filename: &str) -> Result<()> {
         .lines()
         .flat_map(|line| parse_line(line, &city_map))
         .collect();
-    let buf: &[u8] = unsafe {
-        std::slice::from_raw_parts(
-            v.as_ptr() as *const u8,
-            v.len() * std::mem::size_of::<(i16, i16)>(),
-        )
-    };
+    let buf: &[u8] =
+        unsafe { from_raw_parts(v.as_ptr() as *const u8, v.len() * size_of::<Pair>()) };
     // Write bin file
     let out = filename.replace(".txt", ".bin");
     let mut writer = File::create(&out)?;
@@ -37,7 +33,7 @@ pub fn preprocess_txt(filename: &str) -> Result<()> {
     Ok(())
 }
 
-fn parse_line(line: &str, city_map: &HashMap<&str, i16>) -> Option<(i16, i16)> {
+fn parse_line(line: &str, city_map: &HashMap<&str, i16>) -> Option<Pair> {
     let mut parts = line.split(';');
     // Map city name to i16
     let name = parts.next()?;

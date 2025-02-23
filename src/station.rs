@@ -1,5 +1,7 @@
 use crate::cities::CITIES;
 
+pub type Pair = (i16, i16);
+
 #[derive(Default, Clone, Copy, Debug)]
 pub struct Station {
     min: i32,
@@ -47,7 +49,7 @@ impl Default for Stations {
 }
 
 impl Stations {
-    pub fn insert(mut self, &(id, value): &(i16, i16)) -> Self {
+    pub fn insert(mut self, &(id, value): &Pair) -> Self {
         let station = unsafe { self.map.get_unchecked_mut(id as usize) };
         if station.count == 0 {
             *station = Station::new(value as i32);

@@ -1,18 +1,14 @@
-use crate::station::Stations;
+use crate::station::{Pair, Stations};
 use anyhow::Result;
 use memmap2::Mmap;
 use rayon::prelude::*;
-use std::fs::File;
+use std::{fs::File, slice::from_raw_parts};
 
 pub fn process_bin(filename: &str) -> Result<()> {
-    eprintln!("Processing {filename}...");
     let file = File::open(filename)?;
     let mmap = unsafe { Mmap::map(&file)? };
-    let len = mmap.len();
-    eprintln!("File {filename} is {len} bytes.");
-    let buf: &[(i16, i16)] =
-        unsafe { std::slice::from_raw_parts(mmap.as_ptr() as *const (i16, i16), len / 4) };
-    eprintln!("Converted to buf of len: {}", buf.len());
+    let rows = mmap.len() / size_of::<Pair>();
+    let buf: &[Pair] = unsafe { from_raw_parts(mmap.as_ptr() as *const Pair, rows) };
     buf.par_iter()
         .fold(Stations::default, Stations::insert)
         .reduce(Stations::default, Stations::merge)
