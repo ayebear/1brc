@@ -58,13 +58,12 @@ impl Stations {
     }
 
     pub fn merge(mut self, other: Self) -> Self {
-        for (i, other_station) in other.map.iter().enumerate() {
-            if other_station.count == 0 {
-                continue;
-            }
-            let station = unsafe { self.map.get_unchecked_mut(i) };
-            station.add_station(*other_station);
-        }
+        self.map
+            .iter_mut()
+            .zip(other.map)
+            .for_each(|(station, other_station)| {
+                station.add_station(other_station);
+            });
         self
     }
 
