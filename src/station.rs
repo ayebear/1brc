@@ -2,7 +2,7 @@ use crate::cities::CITIES;
 
 pub type Pair = (i16, i16);
 
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Station {
     min: i32,
     max: i32,
@@ -11,15 +11,6 @@ pub struct Station {
 }
 
 impl Station {
-    fn new(value: i32) -> Self {
-        Self {
-            min: value,
-            max: value,
-            total: value,
-            count: 1,
-        }
-    }
-
     fn add_value(&mut self, value: i32) {
         self.min = self.min.min(value);
         self.max = self.max.max(value);
@@ -32,6 +23,17 @@ impl Station {
         self.max = self.max.max(other.max);
         self.total += other.total;
         self.count += other.count;
+    }
+}
+
+impl Default for Station {
+    fn default() -> Self {
+        Self {
+            min: i32::MAX,
+            max: i32::MIN,
+            total: 0,
+            count: 0,
+        }
     }
 }
 
@@ -51,25 +53,17 @@ impl Default for Stations {
 impl Stations {
     pub fn insert(mut self, &(id, value): &Pair) -> Self {
         let station = unsafe { self.map.get_unchecked_mut(id as usize) };
-        if station.count == 0 {
-            *station = Station::new(value as i32);
-        } else {
-            station.add_value(value as i32);
-        }
+        station.add_value(value as i32);
         self
     }
 
     pub fn merge(mut self, other: Self) -> Self {
-        for (i, station) in other.map.iter().enumerate() {
-            if station.count == 0 {
+        for (i, other_station) in other.map.iter().enumerate() {
+            if other_station.count == 0 {
                 continue;
             }
-            let self_station = unsafe { self.map.get_unchecked_mut(i) };
-            if self_station.count == 0 {
-                *self_station = *station;
-            } else {
-                self_station.add_station(*station);
-            }
+            let station = unsafe { self.map.get_unchecked_mut(i) };
+            station.add_station(*other_station);
         }
         self
     }
