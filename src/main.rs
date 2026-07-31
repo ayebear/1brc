@@ -191,9 +191,9 @@ impl Stations {
             if i != 0 {
                 print!(", ");
             }
-            let mean = (station.total as f64 * 0.1) / (station.count as f64 * 0.1);
-            let min = station.min as f64 * 0.1;
-            let max = station.max as f64 * 0.1;
+            let mean = (station.total as f64 / 10.) / station.count as f64;
+            let min = station.min as f64 / 10.;
+            let max = station.max as f64 / 10.;
             print!("{name}={min:.1}/{mean:.1}/{max:.1}");
         }
         println!("}}");
